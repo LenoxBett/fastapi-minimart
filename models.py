@@ -1,12 +1,11 @@
-from typing import List
-from typing import Optional
+from typing import List, Optional
 from sqlalchemy import ForeignKey
 from sqlalchemy import String
 from sqlalchemy import DateTime
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship,sessionmaker
+from sqlalchemy.orm import relationship, Session
 from datetime import datetime
 
 from sqlalchemy import create_engine
@@ -17,7 +16,7 @@ engine = create_engine(
     DATABASE_URL
 )
 
-SessionLocal = sessionmaker(
+SessionLocal = Session(
     autocommit=False,
     autoflush=False,
     bind=engine
@@ -34,7 +33,8 @@ class Product(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    price: Mapped[String] = mapped_column(String, nullable=False)
+    buying_price: Mapped[float] = mapped_column(nullable=False)
+    selling_price: Mapped[float] = mapped_column(nullable=False)
 
     # Relationships
     sales: Mapped[List["Sale"]] = relationship(
