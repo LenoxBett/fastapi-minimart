@@ -1,11 +1,9 @@
 from typing import List, Optional
-from sqlalchemy import ForeignKey
-from sqlalchemy import String
-from sqlalchemy import DateTime
+from sqlalchemy import ForeignKey, String, DateTime
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship, Session
+from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
 
 from sqlalchemy import create_engine
@@ -13,10 +11,11 @@ DATABASE_URL='sqlite:///mysales.db'
 
 
 engine = create_engine(
-    DATABASE_URL
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}  # needed for SQLite   
 )
 
-SessionLocal = Session(
+SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine
@@ -47,14 +46,6 @@ class Product(Base):
         cascade="all, delete-orphan"
     )
 
-    # Serializer
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "price": self.price
-        }
-
 
 # ---------------- SALE ----------------
 class Sale(Base):
@@ -65,7 +56,7 @@ class Sale(Base):
         ForeignKey("Products.id"),
         nullable=False
     )
-    quantity: Mapped[String] = mapped_column(String, nullable=False)
+    quantity: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow
@@ -73,15 +64,6 @@ class Sale(Base):
 
     # Relationship
     product: Mapped["Product"] = relationship(back_populates="sales")
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "product_id": self.product_id,
-            "product_name": self.product.name if self.product else None,
-            "quantity": self.quantity,
-            # "created_at": self.created_at.isoformat() if self.created_at else None
-        }
 
 
 # ---------------- PURCHASE ----------------
@@ -93,7 +75,7 @@ class Purchase(Base):
         ForeignKey("Products.id"),
         nullable=False
     )
-    quantity: Mapped[String] = mapped_column(String, nullable=False)
+    quantity: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow
@@ -101,15 +83,6 @@ class Purchase(Base):
 
     # Relationship
     product: Mapped["Product"] = relationship(back_populates="purchases")
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "product_id": self.product_id,
-            "product_name": self.product.name if self.product else None,
-            "quantity": self.quantity,
-            # "created_at": self.created_at.isoformat() if self.created_at else None
-        }
 
 
 # ---------------- USER ----------------
@@ -124,10 +97,3 @@ class User(Base):
         DateTime,
         default=datetime.utcnow
     )
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "username": self.username,
-            "email": self.email
-        }
