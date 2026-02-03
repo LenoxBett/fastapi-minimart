@@ -1,129 +1,118 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
-
-from fastapi import Depends, HTTPException, Security, status
-from fastapi.security import OAuth2PasswordBearer, SecurityScopes
-from jose import JWTError, jwt
-from passlib.context import CryptContext
-from pydantic import ValidationError
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from models import User, SessionLocal
 from jsonmap import TokenData
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+from db import get_db
+
+# import jwt
+from jose import JWTError, jwt
+from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi.security import (
+    HTTPBearer,
+    SecurityScopes,
+    HTTPAuthorizationCredentials
+)
+
+
+# from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
-# =====================
-# CONFIG
-# =====================
-SECRET_KEY = "3q45wgte67u8l;0-i'[plokiujnyhbtgvrfdefrghtyulkoiujyhtgrfd]"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="token",
-    scopes={
-        "me": "Read information about the current user.",
-        "items": "Read items.",
-    },
-)
-
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-)
-
-# =====================
-# DATABASE
-# =====================
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def get_user_by_email(db: Session, email: str):
-    return db.execute(
-        select(User).where(User.email == email)
-    ).scalar_one_or_none()
-
-# =====================
-# PASSWORD HELPERS
-# =====================
-# def get_password_hash(password: str):
-#     # bcrypt max input is 72 bytes
-#     # password = password[:72]
-#     return ass.hash(password)
 
 password_hash = PasswordHash.recommended()
+SECRET_KEY = "3q45wgte67u8l;0-i'[plokiujnyhbtgvrfdefrghtyulkoiujyhtgrfd]"
+
+security = HTTPBearer()
+
+
+def verify_password(plain_password, hashed_password):
+    return password_hash.verify(plain_password, hashed_password)
+
 
 def get_password_hash(password):
     return password_hash.hash(password)
 
-def verify_password(plain_password: str, hashed_password: str):
-    plain_password = plain_password[:72]
-    return pwd_context.verify(plain_password, hashed_password)
 
-
-# =====================
-# AUTH
-# =====================
-def authenticate_user(db: Session, email: str, password: str):
-    user = get_user_by_email(db, email)
-    if not user:
-        return None
-    if not verify_password(password, user.password):
-        return None
+""" async def get_user(email: str):
+    user= await SessionLocal.execute(select(User).where(User.email==user.email)).scalar_one_or_none()
     return user
+ """
+""" if username in db:
+        user_dict = db[username]
+        return UserInDB(**user_dict) """
+
+
+def get_user(email: str):
+    return SessionLocal.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
+
+
+def authenticate_user(db: Session, identifier: str, password: str):
+    user = db.execute(
+        select(User).where(
+            (User.email == identifier) |
+            (User.username == identifier)
+        )
+    ).scalar_one_or_none()
+
+    if not user:
+        return False
+
+    if not verify_password(password, user.password):
+        return False
+
+    return user
+
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
+    to_encode["scope"] = "user"
+    print(f"Data to encode in JWT--------------------------: {to_encode}")
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
-# =====================
-# CURRENT USER
-# =====================
+
 async def get_current_user(
-    security_scopes: SecurityScopes,
-    token: Annotated[str, Depends(oauth2_scheme)],
-    db: Session = Depends(get_db),
+    security_scopes: SecurityScopes, token: Annotated[str, (security)]
 ):
-    authenticate_value = (
-        f'Bearer scope="{security_scopes.scope_str}"'
-        if security_scopes.scopes
-        else "Bearer"
-    )
-
+    print
+    if security_scopes.scopes:
+        authenticate_value = f'Bearer scope="{security_scopes.scope_str}"'
+    else:
+        authenticate_value = "Bearer"
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": authenticate_value},
     )
-
+    print(f"Token received in get_current_user--------------------------: {token}")
+    print(f"Security scopes in get_current_user--------------------------: {security_scopes.scopes}")
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    print(f"Payload decoded from JWT--------------------------------: {payload}")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str | None = payload.get("sub")
-        if username is None:
+        print(f"Payload decoded from JWT--------------------------------: {payload}")
+        email = payload.get("sub")
+        if email is None:
             raise credentials_exception
-
         scope: str = payload.get("scope", "")
-        token_scopes = scope.split(" ")
-
-        token_data = TokenData(username=username, scopes=token_scopes)
-
-    except (JWTError, ValidationError):
+        # 
+        token_scopes = "user"
+        token_data = TokenData(scopes=token_scopes, email=email)
+    except Exception:
         raise credentials_exception
-
-    user = get_user_by_email(db, token_data.username)
+    user = get_user(token_data.email)
     if user is None:
         raise credentials_exception
-
     for scope in security_scopes.scopes:
         if scope not in token_data.scopes:
             raise HTTPException(
@@ -131,13 +120,35 @@ async def get_current_user(
                 detail="Not enough permissions",
                 headers={"WWW-Authenticate": authenticate_value},
             )
-
     return user
 
-
-async def get_current_active_user(
-    current_user: Annotated[User, Security(get_current_user, scopes=["me"])],
+def get_current_active_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
 ):
-    if getattr(current_user, "disabled", False):
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
+    token = credentials.credentials
+
+    payload = jwt.decode(
+        token,
+        SECRET_KEY,
+        algorithms=[ALGORITHM]
+    )
+
+    email: str | None = payload.get("sub")
+    if email is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+
+    user = db.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+
+    return user

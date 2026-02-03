@@ -15,9 +15,6 @@ class ProductPostMap(BaseModel):
     buying_price: float
     selling_price: float
 
-    # class Config:
-    #     from_attributes = True
-
 class ProductGetMap(ProductPostMap):
     id: int
 
@@ -29,8 +26,6 @@ class SaleGetMap(SalePostMap):
     id: int
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -38,4 +33,13 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: str | None = None
-    scopes: list[str] = []
+    scopes: str | None = None
+
+class PurchasePostMap(BaseModel):
+    product_id: int
+    quantity: int
+
+
+class PurchaseGetMap(PurchasePostMap):
+    id: int
+    created_at: datetime
