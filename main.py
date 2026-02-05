@@ -258,3 +258,78 @@ def remaining_sales_per_product(
         }
         for r in results
     ]
+
+@app.get("/dashboard/ppp")
+def profit_per_product(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Session = Depends(get_db)
+):
+    stmt = (
+        select(
+            Product.id,
+            Product.name,
+            func.sum(Sale.quantity).label("total_sold"),
+            Product.buying_price,
+            Product.selling_price,
+            (
+                func.sum(Sale.quantity)
+                * (Product.selling_price - Product.buying_price)
+            ).label("profit")
+        )
+        .join(Sale)
+        .group_by(Product.id)
+    )
+
+    result = db.execute(stmt).all()
+
+    return [
+        {
+            "product_id": r.id,
+            "product_name": r.name,
+            "total_sold": r.total_sold or 0,
+            "buying_price": r.buying_price,
+            "selling_price": r.selling_price,
+            "profit": float(r.profit or 0),
+        }
+        for r in result
+    ]
+
+@app.get("/dashboard/pppd")
+def profit_per_product_per_day(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Session = Depends(get_db)
+):
+    sale_date = func.date(Sale.created_at).label("sale_date")
+    stmt = (
+        select(
+            sale_date,
+            Product.id,
+            Product.name,
+            func.sum(Sale.quantity).label("total_sold"),
+            Product.buying_price,
+            Product.selling_price,
+            (
+                func.sum(Sale.quantity)
+                * (Product.selling_price - Product.buying_price)
+            ).label("profit")
+        )
+        .join(Sale)
+        .group_by(sale_date, Product.id)
+        .order_by(sale_date, Product.id)
+    )
+
+    result = db.execute(stmt).all()
+
+    return [
+        {
+            "date": r.sale_date,
+            "product_id": r.id,
+            "product_name": r.name,
+            "total_sold": r.total_sold or 0,
+            "buying_price": r.buying_price,
+            "selling_price": r.selling_price,
+            "profit": float(r.profit or 0),
+        }
+        for r in result
+    ]
+
