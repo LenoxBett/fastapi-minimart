@@ -7,7 +7,7 @@ from sqlalchemy import select
 from db import get_db
 
 # import jwt
-from jose import JWTError, jwt
+from jose import JWTError, ExpiredSignatureError, jwt
 from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.security import (
     HTTPBearer,
@@ -96,8 +96,6 @@ async def get_current_user(
     )
     print(f"Token received in get_current_user--------------------------: {token}")
     print(f"Security scopes in get_current_user--------------------------: {security_scopes.scopes}")
-    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    print(f"Payload decoded from JWT--------------------------------: {payload}")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         print(f"Payload decoded from JWT--------------------------------: {payload}")
@@ -108,6 +106,12 @@ async def get_current_user(
         # 
         token_scopes = "user"
         token_data = TokenData(scopes=token_scopes, email=email)
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": authenticate_value},
+        )
     except Exception:
         raise credentials_exception
     user = get_user(token_data.email)
@@ -128,11 +132,24 @@ def get_current_active_user(
 ):
     token = credentials.credentials
 
-    payload = jwt.decode(
-        token,
-        SECRET_KEY,
-        algorithms=[ALGORITHM]
-    )
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     email: str | None = payload.get("sub")
     if email is None:
