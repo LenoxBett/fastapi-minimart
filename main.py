@@ -109,7 +109,7 @@ def login_user(
 # =====================
 @app.get("/products", response_model=List[ProductGetMap])
 def get_products(
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    # current_user: Annotated[User, Depends(get_current_active_user)],
     db: Session = Depends(get_db)
 ):
     return db.scalars(select(Product)).all()
@@ -119,7 +119,7 @@ def get_products(
 @app.post("/products", response_model=ProductGetMap)
 def create_product(
     json_product_obj: ProductPostMap,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    # current_user: Annotated[User, Depends(get_current_active_user)],
     db: Session = Depends(get_db),
 ):
     model_obj = Product(
